@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@import "@plexui/ui/css";
+@source "../node_modules/@plexui/ui";
+
+:root {
+  --vinyl-accent: #e5a00d;
+}
+
+body {
+  min-height: 100dvh;
+  background: radial-gradient(1200px 600px at 50% -10%, #2a2416 0%, transparent 60%), var(--color-surface, #111);
+}
+
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+.shake { animation: shake 0.4s both; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.vinyl-spin { animation: spin 3s linear infinite; }
+
+.eq-bar { animation: eq 0.9s ease-in-out infinite alternate; transform-origin: bottom; }
+@keyframes eq { from { transform: scaleY(0.2); } to { transform: scaleY(1); } }
