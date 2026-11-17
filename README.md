@@ -11,11 +11,12 @@ A blind test built from **your own Discogs collection**. Each card is one releas
 
 Getting all four earns a +2 bonus. Answering inside the 30s timer gives full points, after that half (all of this is adjustable in Settings).
 
-- **Live fuzzy recognition**: as you type, suggestions come from your collection's artists, labels, titles and tracklists. A field turns green as soon as it matches, so there's no submit step, and typos, accents and "The" are forgiven. A wrong pick costs one of 3 tries.
+- **One box, one tap**: tap Track / Artist / Label / Album to choose what you're guessing, then type. Suggestions come from your collection, and an answer counts as soon as it matches, with typos, accents and "The" forgiven. A wrong pick costs one of 3 tries. Once a field is found, the next open one is selected for you.
+- **Flip card**: the front shows a spinning record with a timer ring and four "?" slots that fill in. Revealing flips the card to the sleeve and the answers.
 - **Sources**: Apple Music 30s previews first, then the YouTube videos attached to the release on Discogs. YouTube playback starts somewhere in the middle of the track, never at 0:00. Each source can be switched off. Releases with no playable source are skipped.
 - **Filters** (toggleable): no CDs (vinyl with a bonus CD still counts), and no compilations or Various Artists releases over 15 tracks.
 - **Listen to the rest**: every other track of the release is playable from the card.
-- Keyboard: `Esc` reveals, `Enter` goes to the next card, `Ctrl/⌘ + Space` plays or pauses.
+- Keyboard: `Tab` switches the guess target, `Esc` reveals, `Enter` goes to the next card, `Ctrl/⌘ + Space` plays or pauses.
 
 ## Use it
 

@@ -24,3 +24,16 @@ body {
 
 .eq-bar { animation: eq 0.9s ease-in-out infinite alternate; transform-origin: bottom; }
 @keyframes eq { from { transform: scaleY(0.2); } to { transform: scaleY(1); } }
+
+/* Flip card */
+.flip-card { perspective: 1400px; }
+.flip-inner { transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1); transform-style: preserve-3d; }
+.flip-inner.flipped { transform: rotateY(180deg); }
+.flip-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.flip-back { transform: rotateY(180deg); }
+.card-surface {
+  background: linear-gradient(160deg, #262219 0%, #17150f 45%, #121212 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+@media (prefers-reduced-motion: reduce) { .flip-inner { transition: none; } }
