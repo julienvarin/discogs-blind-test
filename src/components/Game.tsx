@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Button } from "@plexui/ui/components/Button";
-import { Badge } from "@plexui/ui/components/Badge";
 import { Progress } from "@plexui/ui/components/Progress";
 import { ReleaseCard, type CardResult } from "./ReleaseCard";
 import { SettingsDialog } from "./SettingsDialog";
@@ -156,52 +155,38 @@ export function Game({ identity, onLogout }: { identity: Identity; onLogout: () 
   }, []);
 
   const noSource = !settings.useApple && !settings.useYoutube;
-  const indexing = index && index.done < index.total;
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-6 px-4 py-5 sm:px-6">
-      {/* Header */}
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">💿</span>
-          <div>
-            <div className="font-semibold leading-tight">Crate Blind Test</div>
-            <div className="text-xs text-tertiary">
-              {identity.username} · {items ? `${items.length} releases` : "loading…"}
-              {indexing ? ` · indexing tracks ${index.done}/${index.total}` : ""}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          {started && (
-            <div className="flex items-center gap-4 text-sm tabular-nums">
-              <div>
-                <div className="text-xs text-tertiary">Score</div>
-                <div className="text-xl font-bold">{score.total}</div>
-              </div>
-              <div>
-                <div className="text-xs text-tertiary">Cards</div>
-                <div className="text-xl font-semibold">{score.cards}</div>
-              </div>
-              <div className="hidden sm:block">
-                <div className="text-xs text-tertiary">Best</div>
-                <div className="text-xl font-semibold text-secondary">{best}</div>
-              </div>
-            </div>
+    <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6">
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-3 tabular-nums">
+          {started ? (
+            <>
+              <span className="text-3xl font-bold">{score.total}</span>
+              <span className="text-xs text-tertiary">
+                {score.cards} cards · best {best}
+              </span>
+            </>
+          ) : (
+            <span className="font-semibold">💿 Crate</span>
           )}
-          <Button variant="soft" color="secondary" pill size="sm" onClick={() => setSettingsOpen(true)}>
-            ⚙ Settings
+        </div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" color="secondary" pill size="md" uniform onClick={refresh} disabled={refreshing || !items} aria-label="Refresh collection" title="Refresh collection">
+            ⟳
           </Button>
-          <Button variant="ghost" color="secondary" pill size="sm" onClick={onLogout}>
-            Log out
+          <Button variant="ghost" color="secondary" pill size="md" uniform onClick={() => setSettingsOpen(true)} aria-label="Settings" title="Settings">
+            ⚙
+          </Button>
+          <Button variant="ghost" color="secondary" pill size="md" uniform onClick={onLogout} aria-label="Log out" title={`Log out ${identity.username}`}>
+            ⏏
           </Button>
         </div>
       </header>
 
-      {/* Body */}
-      <main className="flex flex-1 flex-col items-center justify-center gap-6">
+      <main className="flex flex-1 flex-col items-center justify-center gap-6 pb-6">
         {!items ? (
-          <div className="w-full max-w-sm text-center">
+          <div className="w-full max-w-xs text-center">
             {loadError ? (
               <>
                 <p className="mb-3 text-danger">{loadError}</p>
@@ -209,36 +194,29 @@ export function Game({ identity, onLogout }: { identity: Identity; onLogout: () 
               </>
             ) : (
               <>
-                <p className="mb-3 text-secondary">Loading your collection…</p>
                 <Progress value={loadProgress?.loaded ?? 0} max={loadProgress?.total || 100} />
-                {loadProgress && (
-                  <p className="mt-2 text-xs text-tertiary tabular-nums">
-                    {loadProgress.loaded} / {loadProgress.total}
-                  </p>
-                )}
+                <p className="mt-2 text-xs text-tertiary tabular-nums">
+                  {loadProgress ? `${loadProgress.loaded} / ${loadProgress.total}` : "…"}
+                </p>
               </>
             )}
           </div>
         ) : !started ? (
-          <div className="flex max-w-lg flex-col items-center gap-5 text-center">
-            <h1 className="heading-3xl">Ready to dig?</h1>
-            <p className="text-secondary">
-              One release per card. Guess the <b>track</b> ({settings.points.track} pts), <b>artist</b> ({settings.points.artist}),{" "}
-              <b>label</b> ({settings.points.label}) and <b>album/EP</b> ({settings.points.album}). Full points for{" "}
-              {settings.timerSeconds}s, then ×{settings.latePointsFactor}.
+          <div className="flex flex-col items-center gap-8">
+            <button
+              onClick={start}
+              disabled={noSource}
+              aria-label="Start"
+              className="group relative grid size-60 place-items-center rounded-full transition-transform active:scale-95 disabled:opacity-40"
+              style={{ background: "repeating-radial-gradient(circle, #0d0d0d 0 2px, #191919 2px 4px)", boxShadow: "0 30px 60px -20px rgba(0,0,0,.9), inset 0 0 30px rgba(0,0,0,.9)" }}
+            >
+              <span className="grid size-20 place-items-center rounded-full text-2xl text-black/80 transition-transform group-hover:scale-110" style={{ background: "var(--vinyl-accent)" }}>
+                ▶
+              </span>
+            </button>
+            <p className="text-sm text-tertiary">
+              {noSource ? "Turn on a source in ⚙" : `${items.length} records`}
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {settings.useApple && <Badge pill>Apple Music</Badge>}
-              {settings.useYoutube && <Badge pill>YouTube</Badge>}
-              {settings.excludeCDs && <Badge pill variant="outline">No CDs</Badge>}
-              {settings.excludeBigCompilations && (
-                <Badge pill variant="outline">No compilations over {settings.compilationMaxTracks} tracks</Badge>
-              )}
-            </div>
-            <Button color="primary" size="xl" pill onClick={start} disabled={noSource}>
-              ▶ Start blind test
-            </Button>
-            {noSource && <p className="text-sm text-danger">Turn on Apple Music or YouTube in settings.</p>}
           </div>
         ) : card ? (
           <ReleaseCard
@@ -251,42 +229,13 @@ export function Game({ identity, onLogout }: { identity: Identity; onLogout: () 
             nextReady={Boolean(deck?.hasNext)}
           />
         ) : deck?.exhausted ? (
-          <div className="max-w-md text-center text-secondary">
-            No playable release found with these settings ({deck.stats.unplayable} without a source, {deck.stats.filtered} filtered).
-            Try turning on another source or relaxing the filters.
-          </div>
+          <p className="text-center text-secondary">Nothing playable. Check ⚙</p>
         ) : (
-          <div className="text-center text-secondary">
-            <div className="mb-2 text-4xl vinyl-spin inline-block">💿</div>
-            <p>Digging through your crates…</p>
-            {deck && deck.stats.unplayable + deck.stats.filtered > 0 && (
-              <p className="mt-1 text-xs text-tertiary">
-                skipped {deck.stats.unplayable} without a preview, {deck.stats.filtered} filtered
-              </p>
-            )}
+          <div className="size-24 rounded-full vinyl-spin" style={{ background: "repeating-radial-gradient(circle, #0d0d0d 0 2px, #191919 2px 4px)" }}>
+            <div className="m-auto mt-8 size-8 rounded-full" style={{ background: "var(--vinyl-accent)" }} />
           </div>
         )}
       </main>
-
-      <footer className="flex flex-wrap items-center justify-between gap-2 text-xs text-tertiary">
-        <span>
-          {started && score.cards > 0 && (
-            <>
-              Found: track {score.byField.track} · artist {score.byField.artist} · label {score.byField.label} · album {score.byField.album} ·
-              perfect {score.perfect}
-            </>
-          )}
-        </span>
-        <span className="flex items-center gap-3">
-          {refreshing && loadProgress && items && <span>refreshing collection…</span>}
-          {items && !refreshing && (
-            <button className="underline-offset-2 hover:underline" onClick={refresh}>
-              Refresh collection
-            </button>
-          )}
-          <span>Data: Discogs · Previews: Apple Music, YouTube</span>
-        </span>
-      </footer>
 
       {/* YouTube player lives here, out of sight (the card shows a vinyl instead of the video). */}
       <div ref={ytHost} aria-hidden inert className="pointer-events-none fixed -bottom-[220px] left-0 size-[200px] opacity-0" />

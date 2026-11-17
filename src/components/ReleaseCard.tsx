@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@plexui/ui/components/Button";
-import { Badge } from "@plexui/ui/components/Badge";
-import { Progress } from "@plexui/ui/components/Progress";
-import { GuessInput, type FieldStatus } from "./GuessInput";
+import { GuessBox, type FieldStatus } from "./GuessBox";
 import { releaseUrl } from "../lib/discogs";
 import { cleanDiscogsName, isMatch } from "../lib/fuzzy";
 import { engine, useElapsed, usePlayer } from "../lib/player";
 import type { Settings } from "../lib/settings";
-import { FIELD_LABEL, FIELDS, type Field, type GameCard, type PlayableTrack } from "../lib/types";
+import { FIELDS, type Field, type GameCard, type PlayableTrack } from "../lib/types";
 
 export type CardResult = { points: number; correct: Field[]; perfect: boolean };
 
@@ -22,7 +20,7 @@ type Props = {
   nextReady: boolean;
 };
 
-const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const SLOT_LABEL: Record<Field, string> = { track: "Track", artist: "Artist", label: "Label", album: "Album" };
 
 export function ReleaseCard({ card, settings, candidates, onDone, onNext, nextReady }: Props) {
   const { release } = card;
@@ -36,7 +34,8 @@ export function ReleaseCard({ card, settings, candidates, onDone, onNext, nextRe
   const [guessed, setGuessed] = useState<Partial<Record<Field, string>>>({});
   const [revealed, setRevealed] = useState(false);
   const startedRef = useRef(false);
-  const firstInput = useRef<HTMLInputElement | null>(null);
+  const fieldsByPoints = useMemo(() => [...FIELDS].sort((a, b) => settings.points[b] - settings.points[a]), [settings.points]);
+  const [target, setTarget] = useState<Field>(fieldsByPoints[0]);
 
   const track: PlayableTrack = card.tracks[trackIdx];
   const source = track?.sources[sourceIdx] ?? track?.sources[0];
@@ -93,12 +92,23 @@ export function ReleaseCard({ card, settings, candidates, onDone, onNext, nextRe
     [onDone, settings.allFourBonus],
   );
 
+  /** Move the target to the next open field (by points) after `from` closes. */
+  const advance = (st: Record<Field, FieldStatus>, from: Field) => {
+    const order = fieldsByPoints;
+    const start = order.indexOf(from);
+    for (let k = 1; k <= order.length; k++) {
+      const f = order[(start + k) % order.length];
+      if (st[f] === "open") return setTarget(f);
+    }
+  };
+
   const markCorrect = (f: Field, value: string) => {
     if (status[f] !== "open" || revealed) return;
     const nextStatus = { ...status, [f]: "correct" as const };
     const nextEarned = { ...earned, [f]: pointsFor(f) };
     setStatus(nextStatus);
     setEarned(nextEarned);
+    advance(nextStatus, f);
     if (f === "track" || f === "artist") setGuessed((g) => ({ ...g, [f]: value }));
     if (FIELDS.every((x) => nextStatus[x] !== "open")) finish(nextStatus, nextEarned);
   };
@@ -109,6 +119,7 @@ export function ReleaseCard({ card, settings, candidates, onDone, onNext, nextRe
     if (n >= settings.maxWrongPerField) {
       const nextStatus = { ...status, [f]: "missed" as const };
       setStatus(nextStatus);
+      advance(nextStatus, f);
       if (FIELDS.every((x) => nextStatus[x] !== "open")) finish(nextStatus, earned);
     }
   };
@@ -153,190 +164,164 @@ export function ReleaseCard({ card, settings, candidates, onDone, onNext, nextRe
   }, [revealed]);
 
   const total = Object.values(earned).reduce((a, b) => a + (b ?? 0), 0);
-  const fieldsByPoints = [...FIELDS].sort((a, b) => settings.points[b] - settings.points[a]);
-  const timeLeft = Math.max(0, settings.timerSeconds - elapsed);
+  const perfect = FIELDS.every((f) => status[f] === "correct");
+  const progress = Math.min(1, elapsed / settings.timerSeconds);
   const playing = player.status === "playing";
   const cover = release.cover && !release.cover.includes("spacer.gif") ? release.cover : release.thumb;
+  const allFailed = player.status === "error" && failed.current.size >= card.tracks.reduce((n, t) => n + t.sources.length, 0);
+
+  const slotValue = (f: Field) =>
+    status[f] === "correct" ? (
+      <span className="truncate text-success">{displayAnswer[f]}</span>
+    ) : revealed ? (
+      <span className="truncate text-default">{displayAnswer[f]}</span>
+    ) : status[f] === "missed" ? (
+      <span className="text-danger">✗</span>
+    ) : (
+      <span className="text-tertiary">?</span>
+    );
+
+  const slotPoints = (f: Field) =>
+    status[f] === "correct" ? (
+      <span className="text-success">+{earned[f]}</span>
+    ) : revealed || status[f] === "missed" ? (
+      <span className="text-danger">✗</span>
+    ) : (
+      <span className="text-tertiary">{pointsFor(f)}</span>
+    );
+
+  const slots = (
+    <ul className="flex flex-col divide-y divide-[var(--color-border-subtle,rgba(255,255,255,.08))]">
+      {fieldsByPoints.map((f) => (
+        <li key={f} className="flex items-center gap-3 py-2">
+          <span className="w-12 shrink-0 text-[11px] font-medium uppercase tracking-wider text-tertiary">{SLOT_LABEL[f]}</span>
+          <span className="min-w-0 flex-1 truncate font-semibold">{slotValue(f)}</span>
+          <span className="shrink-0 text-xs font-semibold tabular-nums">{slotPoints(f)}</span>
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
-    <div className="mx-auto w-full max-w-3xl rounded-2xl border border-subtle bg-surface-secondary p-4 shadow-2xl sm:p-6">
-      {/* Player */}
-      <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-stretch">
-        <div className="relative size-40 shrink-0 overflow-hidden rounded-xl bg-black sm:size-44">
-          {revealed && cover ? (
-            <img src={cover} alt={release.title} className="size-full object-cover" />
-          ) : (
-            <div className={`absolute inset-0 grid place-items-center ${playing ? "vinyl-spin" : ""}`}>
-              <div
-                className="size-[92%] rounded-full"
-                style={{
-                  background:
-                    "repeating-radial-gradient(circle, #111 0 2px, #1c1c1c 2px 4px), #111",
-                  boxShadow: "inset 0 0 20px rgba(0,0,0,.8)",
-                }}
-              />
-              <div className="absolute size-14 rounded-full" style={{ background: "var(--vinyl-accent)" }}>
-                <div className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black" />
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 self-stretch">
-          <div className="flex flex-wrap items-center gap-2">
-            {source && (
-              <Badge color={source.kind === "apple" ? "danger" : "warning"} variant="soft" pill>
-                {source.kind === "apple" ? "Apple Music preview" : "YouTube"}
-              </Badge>
-            )}
-            <Badge color="secondary" variant="outline" pill>
-              Track {track?.position}
-            </Badge>
-            {player.status === "loading" && <span className="text-xs text-tertiary">loading…</span>}
-            {player.status === "error" && failed.current.size >= card.tracks.reduce((n, t) => n + t.sources.length, 0) && (
-              <span className="text-xs text-danger">
-                Couldn't play.{" "}
-                {track && track.sources.length > sourceIdx + 1 ? (
-                  <button className="underline" onClick={() => playTrack(trackIdx, sourceIdx + 1)}>
-                    Try other source
-                  </button>
-                ) : (
-                  "Try another track below."
-                )}
+    <div className="mx-auto flex w-full max-w-[24rem] flex-col items-center gap-4">
+      {/* The card: front = mystery record, back = sleeve + answers */}
+      <div className="flip-card w-full">
+        <div className={`flip-inner grid ${revealed ? "flipped" : ""}`}>
+          {/* FRONT */}
+          <div className="flip-face card-surface flex flex-col rounded-[28px] p-5 [grid-area:1/1]">
+            <div className="flex items-center justify-between text-xs text-tertiary">
+              <span className="flex items-center gap-1.5">
+                <span className={`inline-block size-1.5 rounded-full ${source?.kind === "apple" ? "bg-[#fa2d48]" : "bg-[#ff0033]"}`} />
+                {source?.kind === "apple" ? "Apple Music" : "YouTube"} · {track?.position}
               </span>
-            )}
+              <span className="font-semibold tabular-nums text-default">{total} pts</span>
+            </div>
+
+            <div className="grid flex-1 place-items-center py-5">
+            <button
+              onClick={() => engine.toggle()}
+              aria-label={playing ? "Pause" : "Play"}
+              className="relative grid size-56 place-items-center rounded-full p-[5px] transition-transform active:scale-95 sm:size-60"
+              style={{
+                background: `conic-gradient(${late ? "var(--color-text-tertiary, #777)" : "var(--vinyl-accent)"} ${progress * 360}deg, rgba(255,255,255,.07) 0)`,
+              }}
+            >
+              <div className={`relative grid size-full place-items-center rounded-full ${playing ? "vinyl-spin" : ""}`} style={{ background: "repeating-radial-gradient(circle, #0d0d0d 0 2px, #191919 2px 4px)", boxShadow: "inset 0 0 24px rgba(0,0,0,.9)" }}>
+                <div className="absolute inset-0 rounded-full" style={{ background: "linear-gradient(135deg, rgba(255,255,255,.10), transparent 40%, transparent 60%, rgba(255,255,255,.06))" }} />
+                <div className="grid size-16 place-items-center rounded-full" style={{ background: "var(--vinyl-accent)" }}>
+                  <span className="size-2 rounded-full bg-black" />
+                </div>
+              </div>
+              <span className="absolute grid size-16 place-items-center text-xl text-black/80">
+                {player.status === "loading" ? "" : playing ? "" : "▶"}
+              </span>
+            </button>
+            </div>
+            {allFailed && <p className="-mt-3 mb-2 text-center text-xs text-danger">Can't play this one</p>}
+
+            {slots}
           </div>
 
-          {revealed ? (
-            <div className="min-w-0">
-              <div className="truncate text-xl font-semibold">{release.title}</div>
-              <div className="truncate text-secondary">
-                {release.artists.map(cleanDiscogsName).join(", ")} · {release.year || "—"}
+          {/* BACK */}
+          <div className="flip-face flip-back card-surface flex flex-col overflow-hidden rounded-[28px] [grid-area:1/1]">
+            <div className="relative aspect-square w-full bg-black">
+              {cover && <img src={cover} alt="" className="size-full object-cover" />}
+              <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent" />
+              <div className="absolute inset-x-4 bottom-3 flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-lg font-bold text-white">{release.title}</div>
+                  <div className="truncate text-sm text-white/70">
+                    {release.year || ""} {release.catno ? `· ${release.catno}` : ""}
+                  </div>
+                </div>
+                <a
+                  href={releaseUrl(release.id)}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open on Discogs"
+                  className="shrink-0 rounded-full bg-white/15 px-2.5 py-1 text-xs text-white backdrop-blur hover:bg-white/25"
+                >
+                  Discogs ↗
+                </a>
               </div>
-              <div className="truncate text-sm text-tertiary">
-                {release.labels.map(cleanDiscogsName).join(", ")} {release.catno ? `· ${release.catno}` : ""} ·{" "}
-                {release.formats.map((f) => f.name).join(", ")}
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-end gap-1 h-10" aria-hidden>
-              {Array.from({ length: 24 }, (_, i) => (
-                <span
-                  key={i}
-                  className={`w-1.5 flex-1 rounded-sm bg-primary-solid ${playing ? "eq-bar" : ""}`}
-                  style={{ height: playing ? "100%" : "15%", animationDelay: `${(i * 137) % 900}ms`, opacity: 0.35 + ((i * 7) % 10) / 20 }}
-                />
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-3">
-            <Button color="primary" variant="solid" pill onClick={() => engine.toggle()} aria-label="Play / pause">
-              {playing ? "❚❚ Pause" : "▶ Play"}
-            </Button>
-            <div className="flex-1">
-              <Progress
-                value={revealed ? 0 : Math.min(elapsed, settings.timerSeconds)}
-                max={settings.timerSeconds}
-                aria-label="Timer"
-              />
-              <div className="mt-1 flex justify-between text-xs text-tertiary tabular-nums">
-                <span>
-                  {source?.kind === "youtube" && player.duration
-                    ? `${fmt(player.position)} / ${fmt(player.duration)}`
-                    : player.duration
-                      ? `${fmt(player.position)} / ${fmt(player.duration)}`
-                      : ""}
-                </span>
-                <span className={late && !revealed ? "text-warning" : undefined}>
-                  {revealed ? "" : late ? `late: ×${settings.latePointsFactor} points` : `${Math.ceil(timeLeft)}s full points`}
-                </span>
+              <div className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-sm font-bold text-white backdrop-blur tabular-nums">
+                +{total + (perfect ? settings.allFourBonus : 0)}
+                {perfect && <span className="ml-1 text-[var(--vinyl-accent)]">★</span>}
               </div>
             </div>
+            <div className="px-5 pb-3 pt-1">{slots}</div>
           </div>
         </div>
       </div>
 
-      {/* Guess fields */}
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {fieldsByPoints.map((f, i) => (
-          <GuessInput
-            key={`${release.id}-${f}`}
-            label={FIELD_LABEL[f]}
-            points={status[f] === "correct" ? earned[f] ?? 0 : pointsFor(f)}
-            status={status[f]}
-            revealed={revealed}
-            answer={displayAnswer[f]}
-            wrong={wrong[f]}
-            maxWrong={settings.maxWrongPerField}
-            candidates={candidates[f]}
-            check={(v) => isMatch(v, answers[f])}
-            onCorrect={(v) => markCorrect(f, v)}
-            onWrong={() => markWrong(f)}
-            autoFocus={i === 0}
-            inputRef={i === 0 ? (el) => (firstInput.current = el) : undefined}
-          />
-        ))}
-      </div>
-
-      {/* Rest of the release */}
+      {/* Other tracks */}
       {card.tracks.length > 1 && (
-        <div className="mt-5">
-          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-tertiary">Listen to the rest</div>
-          <div className="flex flex-wrap gap-1.5">
-            {card.tracks.map((t, i) => {
-              const yt = t.sources.findIndex((s) => s.kind === "youtube");
-              const ap = t.sources.findIndex((s) => s.kind === "apple");
-              return (
-                <Button
-                  key={t.key}
-                  size="sm"
-                  pill
-                  variant={i === trackIdx ? "solid" : "soft"}
-                  color={i === trackIdx ? "primary" : "secondary"}
-                  disabled={!t.sources.length}
-                  onClick={() => playTrack(i, ap !== -1 ? ap : yt)}
-                  title={t.sources.length ? undefined : "No preview available"}
-                >
-                  <span className="tabular-nums">{t.position}</span>
-                  {revealed && <span className="max-w-40 truncate opacity-80">{t.title}</span>}
-                  {t.sources.length > 0 && (
-                    <span className="text-[10px] opacity-60">
-                      {ap !== -1 ? "" : "YT"}
-                    </span>
-                  )}
-                </Button>
-              );
-            })}
-          </div>
+        <div className="flex max-w-full flex-wrap justify-center gap-1.5">
+          {card.tracks.map((t, i) => {
+            const ap = t.sources.findIndex((s) => s.kind === "apple");
+            return (
+              <button
+                key={t.key}
+                disabled={!t.sources.length}
+                onClick={() => playTrack(i, ap !== -1 ? ap : 0)}
+                title={revealed ? t.title : undefined}
+                className={`min-w-9 rounded-full px-2.5 py-1 text-xs font-medium tabular-nums transition-colors disabled:opacity-25 ${
+                  i === trackIdx ? "bg-primary-solid text-primary-solid" : "bg-secondary-soft text-secondary hover:text-default"
+                }`}
+              >
+                {t.position}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* Footer */}
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-subtle pt-4">
-        <div className="text-sm text-secondary">
-          This card: <span className="font-semibold text-default tabular-nums">{total}</span> pts
-          {revealed && FIELDS.every((f) => status[f] === "correct") && (
-            <Badge color="success" variant="solid" pill className="ml-2">
-              Perfect +{settings.allFourBonus}
-            </Badge>
-          )}
-          {revealed && (
-            <a href={releaseUrl(release.id)} target="_blank" rel="noreferrer" className="ml-3 text-primary underline-offset-2 hover:underline">
-              View on Discogs ↗
-            </a>
-          )}
-        </div>
-        {revealed ? (
-          <Button color="primary" pill onClick={onNext} disabled={!nextReady} loading={!nextReady}>
-            Next card <kbd className="ml-1 text-xs opacity-60">↵</kbd>
-          </Button>
-        ) : (
-          <Button color="secondary" variant="soft" pill onClick={reveal}>
-            Reveal <kbd className="ml-1 text-xs opacity-60">esc</kbd>
-          </Button>
-        )}
-      </div>
+      {/* Guess or next */}
+      {revealed ? (
+        <Button color="primary" size="xl" pill block onClick={onNext} disabled={!nextReady} loading={!nextReady}>
+          Next
+        </Button>
+      ) : (
+        <>
+          <GuessBox
+            fields={fieldsByPoints}
+            target={target}
+            onTarget={setTarget}
+            status={status}
+            wrong={wrong}
+            maxWrong={settings.maxWrongPerField}
+            points={pointsFor}
+            candidates={candidates}
+            check={(f, v) => isMatch(v, answers[f])}
+            onCorrect={markCorrect}
+            onWrong={markWrong}
+            disabled={revealed}
+          />
+          <button onClick={reveal} className="text-sm text-tertiary underline-offset-4 hover:text-secondary hover:underline">
+            Reveal
+          </button>
+        </>
+      )}
     </div>
   );
 }
